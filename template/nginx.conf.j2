@@ -1,0 +1,143 @@
+        #***************************
+        #*       CONNECTIONS       *
+        #***************************
+
+	#1 Core = 1 Worker
+        worker_processes "{{ worker_processes | default('auto') }}"; 
+
+events {
+
+	worker_connections "{{ worker_connections | default('1024') }}";
+}
+
+
+http {
+
+  include mime.types;
+	
+	#********************************************************************************  
+ 	#										*
+	#				   PERFORMANCE					*
+	#										*
+	#********************************************************************************
+
+	#**************************
+  	#*          CACHE         *
+        #**************************
+
+        #Buffer size for Post submissions
+	client_body_buffer_size "{{ client_body_buffer_size | default('10K') }} "; 	
+	client_max_body_size "{{ client_max_body_size | default('8m') }}";
+	
+	#Buffer size for Headers
+	client_header_buffer_size "{{ client_header_buffer_size | default('1k') }}";
+	
+	#Max time to receive client headers/body.
+	client_body_timeout "{{ client_body_timeout | default('12') }}";
+	client_header_timeout "{{ client_header_timeout | default('12') }}";
+	
+	#Max time to keep a connection open for.
+	keep_alive_timeout "{{ keep_alive_timeout | default('15') }}";
+	
+	#Max time for the client to accept, receive a response
+	send_timeout "{{ send_timeout | default('10') }}";
+	
+	#Skip buffering for static files
+	sendfile "{{ sendfile | default('on') }}";
+	
+	#Optimise sendfile package
+	tcp_nopush "{{ tcp_nopush | default('on') }}";
+	
+	
+	#**************************
+        #*          GZIP          *
+	#**************************
+	
+	gzip "{{ gzip | default('on') }}";
+	gzip_comp_level "{{ gzip_comp_level | default('3') }}";
+	
+	gzip_types "{{ gzip_types | default('text/css') }}";
+	
+
+	#**************************
+	#*        FAST_CGI	  *
+        #**************************
+	
+	fastcgi_cache_path "{{ fastcgi_cache_path }}" levels = "{{ levels }}" keys_zone = "{{ cache_name }}":"{{ keys_zone }}" inactive = "{{ inactive }}";
+	fastcgi_cache_key "$scheme$request_method$host$request_uri";
+	fastcgi_cache_use_stale error timeout updating http_500;
+	fastcgi_cache_lock "{{ fastcgi_cache_lock }}";
+
+
+
+  #SECURITY
+
+        #**************************
+        #*       RATE LIMIT       *
+        #**************************	
+	
+	limit_req_zone $binary_remote_add zone="{{ zone }}" burst="{{ burst }}" nodelay;
+	limit_req_status 429;
+	limit_req_log_level warn;
+
+
+	#**************************
+        #*        HARDENING       *
+        #**************************
+
+	server_tokens off;
+	add_header X-Frame-Options "SAME-ORIGIN"
+	add_header X_XSS-Protection "1; mode=block";
+	add_header X-Content-Type-Options "nosniff" always;
+	add_header Content-Security-Policy "default-src 'self'; script-src 'self'; object-src 'none';" always;
+	
+
+
+      server {
+   	
+	server_name "{{ server_name }}";    
+        listen 443 ssl http2;
+        
+   #SECURITY
+        #**************************
+        #*         SSL/TLS        *
+        #**************************	
+
+	ssl_certificate "{{ route_ctr }}";
+        ssl_certificate_key "{{ route_key }}";
+        ssl_protocols TLSv1.2 TLSv1.3;
+	ssl_dhparam "{{ ssl_dhparam }}";
+	ssl_prefer_server_cipher "{{ ssl_prefer_server_cipher }}";
+	ssl_ciphers "{{ ssl_ciphers }}";
+
+	ssl_stapling "{{ ssl_stapling }}";
+	ssl_stapling_verify "{{ ssl_stapling_verify }}";
+
+	resolver "{{ resolver}}";	
+
+        #**************************
+        #*         HEADERS        *
+        #**************************
+
+	location ~\.(css|js|jpg|png)$ {
+		access_log off;
+		add_header cache_control public;
+		add_header Pragma public;
+		add_header Very Accept-Encoding;
+		Expires 1M;
+      }
+
+      #****************************
+      #*         FAST_CGI         * 
+      #****************************
+
+      location ~\.php$ {
+	fastcgi_cache "{{ cache_name }}";
+	fastcgi_cache_valid 200 "{{ fastcgi_cache_valid_200 }}";
+	fastcgi_cache_valid 301 302 "{{ fastcgi_cache_valid_300 }}";
+	fastcgi_cache_valid 400 "{{ fastcgi_cache_valid_400 }}";
+      }
+	
+}
+
+

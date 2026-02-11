@@ -1,0 +1,34 @@
+---
+
+- name: Bootstrap
+  hosts: test
+  become: true
+  vars_files:
+    - ./variables/bootstrap.yml
+  tasks:
+      
+    - name: Create Group 
+      ansible.builtin.group:
+        name: "{{ user_ansible }}"
+        state: present
+
+    - name: Add Group ansible_user to Sudoers
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ user_ansible }}"
+        content: "%{{ user_ansible }} ALL=(ALL) NOPASSWD:ALL"
+        mode: 0440
+        validate: visudo -cf %s
+
+    - name: Create user
+      ansible.builtin.user:
+        name: "{{ user_ansible }}"
+        groups: "{{user_ansible }}" 
+        append: yes
+        shell: /bin/bash
+
+    - name: SSH Key
+      ansible.builtin.authorized_key:
+        user: "{{ user_ansible }}"
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"    
+...
