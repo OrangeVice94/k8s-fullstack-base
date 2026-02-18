@@ -1,10 +1,11 @@
 ---
 - name: Install Docker
-  hosts: test
+  hosts: k8s_cluster
   vars:
     deps_packages:
       - ca-certificates
       - curl
+
     docker_packages:
       - docker-ce
       - docker-ce-cli
@@ -13,11 +14,12 @@
       - docker-compose-plugin  
   tasks:
 
-  - name: Install Certificates
+  - name: Install prerequisites
     ansible.builtin.apt:
       name: "{{ deps_packages }}"
       state: present
       update_cache: yes    
+    tags: [install, prerequisites]
 
 
   - name: Modify privileges
@@ -34,11 +36,13 @@
       dest: /etc/apt/keyrings/docker.asc
       mode: a+r
 
-  - name: Ansible Distribution Release
+  - name: Get distribution release
     ansible.builtin.shell:  . /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}"  
     register: variable_output
+    changed_when: false
+    failed_when: variable_output.stdout == ""
       
-  - name: Add the repository to Apt sources
+  - name: Add the repository to apt sources
     ansible.builtin.copy:
       dest: /etc/apt/sources.list.d/docker.sources
       content: |
@@ -54,21 +58,38 @@
       state: present
       update_cache: yes
       name: "{{ docker_packages }}"
-
+    tags: [install, docker]
 
   - name: Docker service
     ansible.builtin.service:
       name: docker
       state: started
       enabled: yes
+    tags: [configure, docker]
 
+  - name: Verify Docker installation
+    block:
+      - name: Run hello-world container
+        ansible.builtin.command: docker run --rm hello-world
+        register: output
 
-  - name: Verify correct installation
-    ansible.builtin.command: docker run --rm hello-world
-    register: output
-  
-  - name: Mostrar resultado
-    ansible.builtin.debug:
-      msg: "Docker está funcionando correctamente!"
-    when: "'Hello from Docker!' in output.stdout"   
+      - name: Display success
+        ansible.builtin.debug:
+          msg: "Docker is running correctly!"
+        when: "'Hello from Docker!' in output.stdout"   
+
+    rescue:
+      - name: Display failure
+        ansible.builtin.debug:
+          msg: "WARNING: Docker verification failed. Check Docker service status."
+
+      - name: Show Docker services status
+        ansible.builtin.command: systemctl status docker
+        register: docker_status
+        changed_when: false
+
+      - name: Display service status
+        ansible.builtin.debug:
+          var: docker_status.stdout_lines
+    tags: [verify]
 ...

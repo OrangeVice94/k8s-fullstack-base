@@ -1,0 +1,7 @@
+---
+
+- import_playbook: ./playbooks/playbook-bootstrap.yml
+- import_playbook: ./playbooks/playbook-docker.yml
+- import_playbook: ./playbooks/playbook-nginx.yml
+
+...

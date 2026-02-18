@@ -1,0 +1,139 @@
+---
+  - name: Setup Nginx Reverse Proxy
+    hosts: proxy
+    become: true
+    tags: [nginx]
+    vars_files:
+      - ../variables/nginx.yml
+
+
+    handlers:
+      - name: Validate Nginx conf
+        ansible.builtin.command: nginx -t
+        changed_when: false
+        listen: "restart nginx"
+
+      - name: Restart Nginx
+        ansible.builtin.service:
+          name: nginx
+          state: restarted
+        listen: "restart nginx"
+        
+    tasks:
+
+      - name: Install Nginx
+        ansible.builtin.apt:
+          name: nginx
+          state: present
+          update_cache: yes
+        tags: [install]
+
+
+      # Hold the Nginx version to prevent unintended upgrades.
+      # Dynamic modules and custom configs can break if Nginx is upgraded
+      # without testing. To upgrade manually:
+      #   apt-mark unhold nginx && apt upgrade nginx && apt-mark hold nginx
+      #
+          
+
+      - name: Hold Nginx version to prevent automatic upgrades
+        ansible.builtin.dpkg_selections:
+          name: nginx
+          selection: hold
+        tags: [install]
+
+      - name: Install OpenSSL for certificate generation
+        ansible.builtin.apt:
+          name: openssl
+          state: present
+          update_cache: yes
+        tags: [install]
+
+      - name: Create SSL directory
+        ansible.builtin.file:
+          path: "{{ ssl_certificate_directory }}"
+          state: directory
+          owner: root
+          group: root
+          mode: 0700
+        tags: [ssl]
+
+      # Generate a self-signed certificate for development/testing.
+      # For production, replace this with Let's Encrypt (certbot) or
+      # provide your own certificate files.
+
+      - name: Generate self-signed SSL private key
+        ansible.builtin.command:
+          cmd: openssl genrsa -out "{{ ssl_certificate_key_path }}" "{{ ssl_key_size }}"
+          creates: "{{ ssl_certificate_key_path }}"
+        tags: [ssl]
+
+      - name: Generate self-signed SSL certificate
+        ansible.builtin.command:
+          cmd: openssl req -new -x509 -key "{{ ssl_certificate_key_path }}" -out "{{ ssl_certificate_path }}" -days 365 -subj "/C=ES/ST=Madrid/L=Madrid/O=K8S-Fullstack/CN={{ server_name }}"
+          creates: "{{ ssl_certificate_path }}"
+        tags: [ssl]
+
+      - name: Generate self-signed SSL dhparam
+        ansible.builtin.command:
+          cmd: openssl dhparam -out "{{ ssl_dhparam }}" "{{ ssl_key_size }}"
+          creates: "{{ ssl_dhparam }}"
+        tags: [ssl]
+
+      - name: Set appropiate permissions on SSL private key
+        ansible.builtin.file:
+          path: "{{ ssl_certificate_key_path }}"
+          owner: root
+          group: root
+          mode: 0600
+        tags: [ssl]
+
+      - name: Set appropiate permissions on SSL certification
+        ansible.builtin.file:
+          path: "{{ ssl_certificate_path }}"
+          owner: root
+          group: root
+          mode: 0644
+        tags: [ssl]
+
+      - name: Deploy Nginx configuration
+        ansible.builtin.template:
+          src: ../templates/nginx.conf.j2
+          dest: /etc/nginx/nginx.conf
+          owner: root
+          group: root
+          mode: 0644
+          validate: nginx -t -c %s
+        notify: "restart nginx"
+        tags: [configure]
+
+      - name: Remove default site
+        ansible.builtin.file:
+          path: /etc/nginx/sites-enabled/default
+          state: absent
+        notify: "restart nginx"
+        tags: [configure]
+
+      - name: Ensure Nginx is running and enabled on boot
+        ansible.builtin.service:
+          name: nginx
+          state: started
+          enabled: yes
+        tags: [service]
+
+      - name: Verify Nginx is responding
+        ansible.builtin.uri: 
+          url: "https://localhost:{{ nginx_port }}"
+          status_code: [200, 429, 502]
+          validate_certs: false
+        register: nginx_health
+        failed_when: false
+        tags: [verify]
+
+      - name: Display Nginx status
+        ansible.builtin.debug:
+          msg: "{{ 'Nginx is healthy!' if nginx_health.status in [200, 429, 502] else 'WARNING: Nginx health check failed' }}"
+        tags: [verify]
+
+...
+

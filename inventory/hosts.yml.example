@@ -1,0 +1,36 @@
+# Ansible inventory example
+# Copy this file to hosts.yml and replace the placeholder IPs with your actual VM IPs.
+# Alternatively, run: ./setup-inventory.sh
+---
+all:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
+  children:
+
+    k8s_master:
+      hosts:
+        master1:
+          ansible_host: <MASTER_IP>
+
+    k8s_workers:
+      hosts:
+        worker1:
+          ansible_host: <WORKER_1_IP>
+        worker2:
+          ansible_host: <WORKER_2_IP>
+
+    # Group that includes all K8S nodes (master + workers).
+    # Used by playbooks that target the entire cluster (Docker, K8S prereqs).
+    k8s_cluster:
+      children:
+        k8s_master:
+        k8s_workers:
+
+    # Nginx reverse proxy (external to the K8S cluster).
+    proxy:
+      hosts:
+        nginx1:
+          ansible_host: <NGINX_PROXY_IP>
+
