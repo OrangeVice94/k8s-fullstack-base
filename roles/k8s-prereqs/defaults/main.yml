@@ -1,0 +1,10 @@
+k8s_packages:
+  - kubeadm
+  - kubectl
+  - kubelet
+
+k8s_prereq_packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg

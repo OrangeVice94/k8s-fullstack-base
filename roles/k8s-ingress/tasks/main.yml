@@ -1,0 +1,55 @@
+# Install and configure K8s Ingress
+
+- name: Start process installation
+  block:
+  - name: Install Bare Metal because we are not using Kubernetes Cloud Services
+    ansible.builtin.command: >
+      kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.14.3/deploy/static/provider/baremetal/deploy.yaml
+    tags: [cni]
+
+  - name: Apply 10 seconds to give API time to register the PODs
+    ansible.builtin.pause:
+      seconds: 10
+    changed_when: false
+    tags: [cni]    
+
+  - name: Wait for Ingress Controller to be ready
+    ansible.builtin.command: >
+      kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=ingress-nginx -n ingress-nginx --timeout=180s
+    tags: [cni]
+
+  - name: Patch Service 
+    ansible.builtin.shell: "kubectl patch svc ingress-nginx-controller -n ingress-nginx --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/ports/0/nodePort\",\"value\":30080},{\"op\":\"replace\",\"path\":\"/spec/ports/1/nodePort\",\"value\":30443}]'"
+    tags: [cni]    
+
+  # In the Nginx role, a 502 is expected when the backend is not ready yet.
+  # In the Ingress Controller, a 502 indicates a real connection error
+  # since it runs inside the cluster and should always reach its backends.
+  - name: Verify Ingress Controller is responding
+    ansible.builtin.uri: 
+      url: "https://localhost:{{ ingress_controller_port }}"
+      status_code: [200, 404]
+      validate_certs: false 
+    register: ingress_controller_health
+    failed_when: false
+    tags: [verify]
+
+  - name: Get Ingress Controller version
+    ansible.builtin.command: kubectl -n ingress-nginx exec deploy/ingress-nginx-controller -- /nginx-ingress-controller --version
+    register: ingress_controller_version
+    changed_when: false
+    tags: [verify]
+
+  - name: Display Ingress Controller status
+    ansible.builtin.debug:
+      msg: "{{ 'Ingress Controller nginx version: ' + ingress_controller_version.stdout.split('/')[-1] + ' is healthy!' if ingress_controller_health.status in [200, 404] else 'WARNING: Ingress Controller health check failed' }}"
+    tags: [verify]
+
+  rescue:
+    - name: Uninstall Ingress Controller
+      ansible.builtin.command: kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.14.3/deploy/static/provider/baremetal/deploy.yaml
+      failed_when: false 
+
+    - name: Force fail playbook
+      ansible.builtin.fail:
+        msg: "Ingress Controller deployment aborted. A rollback has been performed to clean the machine."

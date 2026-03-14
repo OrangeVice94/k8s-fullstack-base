@@ -1,0 +1,92 @@
+---
+# Reference: https://docs.docker.com/engine/install/debian/
+# Install Docker
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name: "{{ deps_packages }}"
+    state: present
+    update_cache: true    
+  tags: [preinstall]
+
+
+- name: Modify privileges
+  ansible.builtin.file:
+    mode: 0755
+    path: /etc/apt/keyrings
+    state: directory
+  tags: [key]
+
+- name: Download Docker GPG key
+  ansible.builtin.shell: >
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor 
+    -o /etc/apt/keyrings/docker.gpg
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+  tags: [key]
+
+- name: Modify privileges GPG Key
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.gpg
+    owner: root
+    group: root
+    mode: 0644
+  tags: [key]
+
+- name: Add the repository to apt sources
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/debian
+      Suites: {{ ansible_distribution_release }}
+      Components: stable
+      Signed-By: /etc/apt/keyrings/docker.gpg
+    mode: 0644
+  tags: [apt]
+
+- name: Install Docker Engine and Plugins
+  ansible.builtin.apt:
+    state: present
+    update_cache: true
+    name: "{{ docker_packages }}"
+  tags: [install]
+
+- name: Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  tags: [configure]
+
+- name: Verify Docker installation
+  block:
+    - name: Run hello-world container
+      ansible.builtin.command: docker run --rm hello-world
+      register: output
+
+    - name: Display Docker version
+      ansible.builtin.command: docker -v
+      register: docker_version
+      changed_when: false  
+
+    - name: Display success
+      ansible.builtin.debug:
+        msg: "Docker version: {{ docker_version.stdout.split(' ')[2] | replace(',', '') }} is running correctly!"
+      when: "'Hello from Docker!' in output.stdout"   
+
+  rescue:
+    - name: Display failure
+      ansible.builtin.debug:
+        msg: "WARNING: Docker verification failed. Check Docker service status."
+
+    - name: Show Docker services status
+      ansible.builtin.command: systemctl status docker
+      register: docker_status
+      changed_when: false
+
+    - name: Display service status
+      ansible.builtin.debug:
+        var: docker_status.stdout_lines
+  tags: [verify]
+...

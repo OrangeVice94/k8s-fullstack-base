@@ -3,11 +3,11 @@
 #Generates the Ansible inventory file from user input.
 #This script is cloud-agnostic: it works with any provider (GCP, AWS, Azure, etc.)
 #or local VMs (VirtualBox, bare metal).
-#
-#Usate: chmod +x setup-inventory.sh && ./setup-inventory.sh
+
+#Usage: chmod +x setup-inventory.sh && ./setup-inventory.sh
 #Output: inventory/hosts.yml (gitignored)
-#
-#
+
+
 
 
 set -e
@@ -25,10 +25,11 @@ echo ""
 
 
 
-read -p " K8S Master node IP:   " MASTER_IP
-read -p " K8S Worker 1 IP:      " WORKER1_IP
-read -p " K8S Worker 2 IP:      " WORKER2_IP
-read -p " Nginx Proxy IP:       " NGINX_IP
+read -p " K8S Master node IP:      " MASTER_IP
+read -p " K8S Master internal IP:  " INTERNAL_IP
+read -p " K8S Worker 1 IP:         " WORKER1_IP
+read -p " K8S Worker 2 IP:         " WORKER2_IP
+read -p " Nginx Proxy IP:          " NGINX_IP
 echo ""
 read -p " SSH user [default: ansible]: " SSH_USER
 SSH_USER=${SSH_USER:-ansible}
@@ -58,6 +59,7 @@ all:
       hosts:
         master1:
           ansible_host: ${MASTER_IP}
+          internal_ip:  ${INTERNAL_IP}
 
 
     k8s_workers:
@@ -69,7 +71,7 @@ all:
 
      
     # Group that includes all K8S nodes (master + workers).
-    # Used by playbooks that target the entire cluster (Docker, K8S prereqs).
+    # Used by roles that target the entire cluster (Docker, K8S prereqs).
     k8s_cluster:
       children:
         k8s_master:

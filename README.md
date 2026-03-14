@@ -3,9 +3,9 @@
 > Automated infrastructure platform for deploying a containerized web application on Kubernetes, provisioned entirely with Ansible and delivered through CI/CD.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Ansible](https://img.shields.io/badge/Ansible-2.15+-EE0000?logo=ansible&logoColor=white)](https://docs.ansible.com/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28+-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![Docker](https://img.shields.io/badge/Docker-24+-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Ansible](https://img.shields.io/badge/Ansible-2.14+-EE0000?logo=ansible&logoColor=white)](https://docs.ansible.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.35+-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Docker](https://img.shields.io/badge/Docker-29+-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 ---
 
@@ -20,16 +20,27 @@ This project is **not** about the application itself — it's about the **platfo
 5. **Automate** the entire build & deploy cycle (GitHub Actions)
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                          INFRASTRUCTURE FLOW                              │
-│                                                                           │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────┐   ┌───────┐ │
-│   │  Ansible  │───▶│  Docker  │───▶│   K8S    │───▶│ Nginx │──▶│  App  │ │
-│   │  (Nodes)  │    │ (Images) │    │(Cluster) │    │(Proxy)│   │ Live! │ │
-│   └──────────┘    └──────────┘    └──────────┘    └───────┘   └───────┘ │
-│        │                                                          │       │
-│        └───────────────── GitHub Actions ─────────────────────────┘       │
-└───────────────────────────────────────────────────────────────────────────┘
+
+                                    INFRASTRUCTURE FLOW
+                                 (Ansible provisioning order)
+
+  ┌───────────┐   ┌─────────┐   ┌─────────┐   ┌────────────┐   ┌────────────┐
+  │ Bootstrap │──▶│  Nginx  │──▶│ Docker  │──▶│ K8S Prereqs│──▶│ K8S Master │
+  │   (all)   │   │ (Proxy) │   │(Cluster)│   │  (Cluster) │   │ (+ Calico) │
+  └───────────┘   └─────────┘   └─────────┘   └────────────┘   └─────┬──────┘
+                                                                     │
+                                                                     ▼
+                                                              ┌────────────┐
+                                                              │K8S Workers │
+                                                              │  (Join)    │
+                                                              └─────┬──────┘
+                                                                    │
+                                                                    ▼
+                                                              ┌────────────┐
+                                                              │  Ingress   │
+                                                              │ Controller │
+                                                              └────────────┘
+
 ```
 
 ## Architecture
@@ -37,7 +48,7 @@ This project is **not** about the application itself — it's about the **platfo
 ```
                     ┌─────────────────────────────────────────────────────┐
                     │                    NGINX VM                         │
-  Internet ───────▶│  SSL Termination ─ Rate Limit ─ Security Headers   │
+  Internet ───────▶ │  SSL Termination ─ Rate Limit ─ Security Headers    │
                     └──────────────────────┬──────────────────────────────┘
                                            │
                                       proxy_pass
@@ -45,28 +56,28 @@ This project is **not** about the application itself — it's about the **platfo
           ┌────────────────────────────────▼──────────────────────────────┐
           │                     KUBERNETES CLUSTER                        │
           │                                                               │
-          │                    ┌───────────────────┐                     │
-          │                    │ Ingress Controller │                     │
-          │                    └────────┬──────────┘                     │
-          │                             │                                │
-          │     ┌────────────┐     ┌────▼───────┐     ┌────────────┐     │
-          │     │  App Pod   │     │  App Pod   │     │  App Pod   │     │
-          │     └─────┬──────┘     └─────┬──────┘     └─────┬──────┘     │
+          │                    ┌───────────────────┐                      │
+          │                    │ Ingress Controller│                      │
+          │                    └────────┬──────────┘                      │
+          │                             │                                 │
+          │     ┌────────────┐     ┌────▼───────┐     ┌────────────┐      │
+          │     │  App Pod   │     │  App Pod   │     │  App Pod   │      │
+          │     └─────┬──────┘     └─────┬──────┘     └─────┬──────┘      │
           │           └──────────────────┼──────────────────┘             │
           │                              │                                │
-          │                    ┌─────────▼─────────┐                     │
-          │                    │    PostgreSQL      │                     │
-          │                    │   (StatefulSet)    │                     │
+          │                    ┌─────────▼─────────┐                      │
+          │                    │    PostgreSQL     │                      │
+          │                    │   (StatefulSet)   │                      │
           │                    └───────────────────┘                      │
           │                                                               │
-          │   Master (1) ──── Workers (N)  ──── Provisioned by Ansible   │
+          │   Master (1) ──── Workers (N)  ──── Provisioned by Ansible    │
           └───────────────────────────────────────────────────────────────┘
 ```
 
 The external Nginx acts as the **edge proxy** — handling SSL termination, rate limiting, and security hardening before traffic enters the cluster. Inside K8S, the **Ingress Controller** handles internal routing to the appropriate services.
 
-| Layer               | Technology       | Purpose                                                        |
-|---------------------|------------------|----------------------------------------------------------------|
+| Layer               | Technology       | Purpose                                                         |
+|---------------------|------------------|-----------------------------------------------------------------|
 | Infrastructure      | Ansible          | Provisions all nodes and installs dependencies                  |
 | Containerization    | Docker           | Builds the application image                                    |
 | Orchestration       | Kubernetes       | Manages pods, scaling, and self-healing                         |
@@ -81,44 +92,25 @@ The external Nginx acts as the **edge proxy** — handling SSL termination, rate
 k8s-fullstack-base/
 │
 ├── ansible.cfg                        # Ansible configuration
-├── site.yml                           # Main entry point (orchestrates all playbooks)
+├── site.yml                           # Main entry point (orchestrates all roles)
 │
 ├── inventory/
 │   ├── hosts.yml.example              # Inventory template (committed to Git)
 │   └── hosts.yml                      # Real inventory (generated, gitignored)
 │
-├── playbooks/
-│   ├── playbook-bootstrap.yml         # Node bootstrap (users, SSH, sudo)
-│   ├── playbook-docker.yml            # Docker CE installation
-│   ├── playbook-nginx.yml             # Nginx reverse proxy setup
-│   ├── playbook-k8s-prereqs.yml       # K8S prerequisites (swap, kernel modules)
-│   ├── playbook-k8s-master.yml        # Initialize control plane (kubeadm init)
-│   └── playbook-k8s-workers.yml       # Join workers to cluster (kubeadm join)
+├── group_vars/
+│   └── all.yml                        # Shared variables across all roles
 │
-├── templates/
-│   └── nginx.conf.j2                  # Nginx reverse proxy configuration
-│
-├── variables/
-│   ├── bootstrap.yml                  # Bootstrap variables
-│   └── nginx.yml                      # Nginx variables (ports, SSL paths, etc.)
-│
-├── app/                               # Sample containerized application
-│   ├── Dockerfile
-│   └── src/
+├── roles/                             # Each role follows: tasks/, defaults/, handlers/, templates/
+│   ├── bootstrap/                     # Node provisioning (users, SSH, sudo)
+│   ├── nginx/                         # Nginx reverse proxy (SSL, rate limiting, hardening)
+│   ├── docker/                        # Docker CE + containerd installation
+│   ├── k8s-prereqs/                   # K8S prerequisites (swap, sysctl, kubeadm/kubelet/kubectl)
+│   ├── k8s-master/                    # Control plane init (kubeadm init, Calico CNI)
+│   ├── k8s-workers/                   # Worker nodes join (kubeadm join)
+│   └── k8s-ingress/                   # Nginx Ingress Controller (bare metal, NodePort)
 │
 ├── k8s/                               # Kubernetes manifests
-│   ├── namespace.yml
-│   ├── app-deployment.yml
-│   ├── app-service.yml
-│   ├── postgres-statefulset.yml
-│   ├── postgres-service.yml
-│   ├── postgres-pv.yml
-│   ├── ingress.yml
-│   └── secrets.yml
-│
-├── .github/                           # CI/CD pipeline
-│   └── workflows/
-│       └── deploy.yml
 │
 ├── setup-inventory.sh                 # Inventory generator script (cloud-agnostic)
 ├── .gitignore
@@ -128,15 +120,24 @@ k8s-fullstack-base/
 
 ## Prerequisites
 
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.15
+- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.14
 - **Debian/Ubuntu-based** Linux VMs (any cloud provider or local) with SSH access
 - SSH key pair (`~/.ssh/id_rsa` & `~/.ssh/id_rsa.pub`)
 
 ### VM Requirements
 
-You need at least **4 VMs** running **Debian or Ubuntu**:
+You need at least **4 VMs** running **Debian or Ubuntu** plus a control node with Ansible 2.14+ installed.
 
-> **Why Debian/Ubuntu?** The Docker and Nginx playbooks use `apt` for package management and Debian-specific repository paths. RHEL/CentOS/Rocky would require separate playbooks using `dnf`.
+> **Why Debian/Ubuntu?** It is the Linux distribution I am most familiar with. 
+> RHEL/CentOS/Rocky would require separate playbooks with different package 
+> management (`dnf`), GPG key handling, and additional steps not needed 
+> in Debian such as SELinux configuration and `firewalld` rules.
+> **Note:** On fresh VMs, run the bootstrap playbook with your cloud provider's 
+> default SSH user:
+> ```bash
+> ansible-playbook site.yml --tags bootstrap -u <your_cloud_user>
+> ```
+> After bootstrap, all subsequent roles will use the `ansible` user automatically.
 
 | VM | Role | Suggested Size |
 |----|------|----------------|
@@ -147,33 +148,6 @@ You need at least **4 VMs** running **Debian or Ubuntu**:
 
 These can be provisioned on **any platform**: GCP, AWS, Azure, Hetzner, VirtualBox, bare metal, etc.
 
-<details>
-<summary><b>Example: GCP setup</b></summary>
-
-```bash
-# Master node
-gcloud compute instances create k8s-master \
-  --zone=europe-west1-b \
-  --machine-type=e2-medium \
-  --image-family=debian-12 \
-  --image-project=debian-cloud
-
-# Worker nodes
-gcloud compute instances create k8s-worker-1 k8s-worker-2 \
-  --zone=europe-west1-b \
-  --machine-type=e2-medium \
-  --image-family=debian-12 \
-  --image-project=debian-cloud
-
-# Nginx reverse proxy
-gcloud compute instances create nginx-proxy \
-  --zone=europe-west1-b \
-  --machine-type=e2-small \
-  --image-family=debian-12 \
-  --image-project=debian-cloud
-```
-
-</details>
 
 ## Quick Start
 
@@ -197,30 +171,35 @@ ansible-playbook site.yml
 
 ```bash
 # Bootstrap nodes (SSH, users, sudo)
-ansible-playbook playbooks/playbook-bootstrap.yml
+ansible-playbook site.yml --tags bootstrap
 
 # Install Docker
-ansible-playbook playbooks/playbook-docker.yml
+ansible-playbook site.yml --tags docker
 
 # Setup Nginx reverse proxy
-ansible-playbook playbooks/playbook-nginx.yml
+ansible-playbook site.yml --tags nginx
 
 # Setup Kubernetes cluster
-ansible-playbook playbooks/playbook-k8s-prereqs.yml
-ansible-playbook playbooks/playbook-k8s-master.yml
-ansible-playbook playbooks/playbook-k8s-workers.yml
+ansible-playbook site.yml --tags k8s-prereqs
+ansible-playbook site.yml --tags k8s-master
+ansible-playbook site.yml --tags k8s-workers
+
+# Install Ingress Controller
+ansible-playbook site.yml --tags k8s-ingress
 ```
 
-## Playbooks
+## Roles
 
-| Playbook | Target Hosts | Description |
+| Role | Target Hosts | Description |
 |----------|-------------|-------------|
-| `playbook-bootstrap.yml` | `all` | Creates service user, configures SSH keys, sets up passwordless sudo |
-| `playbook-docker.yml` | `k8s_cluster` | Installs Docker CE, containerd, and Docker Compose plugin |
-| `playbook-nginx.yml` | `proxy` | Installs and configures Nginx as a reverse proxy to the K8S cluster |
-| `playbook-k8s-prereqs.yml` | `k8s_cluster` | Disables swap, loads kernel modules, configures sysctl for K8S networking |
-| `playbook-k8s-master.yml` | `k8s_master` | Runs `kubeadm init`, installs CNI plugin, generates join token |
-| `playbook-k8s-workers.yml` | `k8s_workers` | Joins worker nodes to the cluster using the master's token |
+| `bootstrap` | `all` | Creates service user, configures SSH keys, sets up passwordless sudo |
+| `docker` | `k8s-cluster` | Installs Docker CE, containerd, and Docker Compose plugin |
+| `nginx` | `proxy` | Installs and configures Nginx as a reverse proxy to the K8S cluster |
+| `k8s-prereqs` | `k8s-cluster` | Disables swap, configures sysctl, sets up containerd with systemd cgroup, installs kubeadm/kubelet/kubectl |
+| `k8s-master` | `k8s-master` | Initializes control plane with `kubeadm init`, configures kubeconfig, installs Calico CNI |
+| `k8s-workers` | `k8s-workers` | Generates a fresh join token from the master and joins workers nodes to the cluster |
+| `k8s-ingress` | `k8s-master` | Installs Nginx Ingress Controller |
+
 
 ## Architecture Decisions
 
@@ -231,22 +210,26 @@ ansible-playbook playbooks/playbook-k8s-workers.yml
 | **kubeadm for K8S setup** | Shows understanding of how a cluster is built from scratch, rather than using managed K8S (GKE). |
 | **Dual Nginx architecture** | External Nginx handles edge concerns (SSL, rate limiting, DDoS protection). The Ingress Controller inside K8S handles internal service routing. Each layer has a distinct responsibility. |
 | **App-agnostic design** | The platform is built to deploy any containerized application, not tied to a specific framework or language. |
-| **Nginx version pinning** | Nginx version is held (`apt-mark hold`) after installation to prevent automatic upgrades from breaking dynamic modules or custom configurations. Manual upgrades are documented in the playbook. |
-| **Separate playbooks, one `site.yml`** | Each playbook can run independently for debugging. `site.yml` orchestrates them all in the correct order for full provisioning. |
+| **Nginx version pinning** | Nginx version is held (`apt-mark hold`) after installation to prevent automatic upgrades that could affect configuration compatibility. Manual upgrades are documented in the playbook. |
+| **Kubernetes version pinning** | Kubernetes version is held (`apt-mark hold`) after installation to prevent automatic upgrades to avoid breaking compatibility between your versions of kubeadm, kubectl, and kubelet. |
+| **Usage of roles, over Playbooks** | It is the industry standard making possible a greater understanding of the project structure. Allows the separation of variables with default and vars. Handlers with scope. Isolated Testability.|
+| **Calico as CNI** | Supports network policies out of the box, widely adopted in production, and uses standard BGP — making it a solid choice for learning real-world K8S networking. Flannel is simpler but lacks network policies. Cilium uses eBPF (more modern but more complex). |
+| **NodePort** | Deterministic port assignment for Nginx proxy_pass connectivity, no external load balancer required in bare metal environments. |
 
 ## Roadmap
 
 - [x] Node provisioning with Ansible (bootstrap + Docker)
-- [x] Nginx reverse proxy configuration template (in progress)
+- [x] Nginx reverse proxy configuration template
 - [x] Cloud-agnostic inventory setup script
-- [x] Nginx provisioning playbook
-- [ ] Kubernetes cluster setup (kubeadm)
-- [ ] Nginx Ingress Controller
+- [x] Nginx provisioning role
+- [x] Kubernetes cluster setup (kubeadm)
+- [x] Nginx Ingress Controller
 - [ ] Sample containerized application + Dockerfile
 - [ ] Kubernetes manifests (Deployments, Services, StatefulSet, Ingress)
 - [ ] GitHub Actions CI/CD pipeline
 - [ ] Ansible Vault for secrets management
 - [ ] Monitoring & health checks
+
 
 ## Tech Stack
 

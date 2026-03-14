@@ -12,14 +12,14 @@ all:
     k8s_master:
       hosts:
         master1:
-          ansible_host: <MASTER_IP>
+          ansible_host: 
 
     k8s_workers:
       hosts:
         worker1:
-          ansible_host: <WORKER_1_IP>
+          ansible_host: 
         worker2:
-          ansible_host: <WORKER_2_IP>
+          ansible_host: 
 
     # Group that includes all K8S nodes (master + workers).
     # Used by playbooks that target the entire cluster (Docker, K8S prereqs).
@@ -32,5 +32,5 @@ all:
     proxy:
       hosts:
         nginx1:
-          ansible_host: <NGINX_PROXY_IP>
+          ansible_host: 
 

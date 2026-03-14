@@ -1,7 +1,43 @@
 ---
+  - hosts: all
+    become: true
+    tags: [bootstrap]
+    roles:
+      - bootstrap
+  
+  - hosts: proxy
+    become: true
+    tags: [nginx]
+    roles:
+      - nginx
 
-- import_playbook: ./playbooks/playbook-bootstrap.yml
-- import_playbook: ./playbooks/playbook-docker.yml
-- import_playbook: ./playbooks/playbook-nginx.yml
+  - hosts: k8s_cluster
+    become: true
+    roles:
+      - role: docker
+        tags: [docker] 
+      - role: k8s-prereqs
+        tags: [k8s_prereqs]
 
+  - hosts: k8s_master
+    become: true
+    tags: [k8s_master]
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf    
+    roles:
+      - k8s-master
+
+  - hosts: k8s_workers
+    become: true
+    tags: [k8s_workers]
+    roles:
+      - k8s-workers
+
+  - hosts: k8s_master
+    become: true  
+    tags: [k8s_ingress]
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf  
+    roles:
+      - k8s-ingress
 ...

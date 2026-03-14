@@ -1,0 +1,56 @@
+---
+# Bootstrap: Creates service user, configures SSH access,
+# and sets up passwordless sudo for Ansible automation.
+
+     
+  # Prevent the system from running automatic updates that 
+  # could interfere with the installation of roles.
+- name: Disable unattended-upgrades 
+  ansible.builtin.service:
+    name: unattended-upgrades
+    state: stopped
+    enabled: false
+  tags: [bootstrap]
+
+- name: Create group 
+  ansible.builtin.group:
+    name: "{{ user_ansible }}"
+    state: present
+  tags: [group]
+
+- name: Add group to Sudoers
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ user_ansible }}"
+    content: "%{{ user_ansible }} ALL=(ALL) NOPASSWD:ALL"
+    owner: root
+    group: root
+    mode: 0440
+    validate: visudo -cf %s
+  tags: [group]
+
+- name: Create user
+  ansible.builtin.user:
+    name: "{{ user_ansible }}"
+    groups: "{{ user_ansible }}" 
+    append: true
+    create_home: true
+    home: /home/{{ user_ansible }}
+    shell: /bin/bash
+    password_lock: true
+  tags: [user]
+
+- name: Add SSH Authorized Key
+  ansible.builtin.authorized_key:
+    user: "{{ user_ansible }}"
+    state: present
+    key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+  register: ssh_result
+  failed_when: false
+  tags: [ssh]
+
+- name: Warn if SSH key was not found
+  ansible.builtin.fail:
+    msg: "SSH public key not found at ~/.ssh/id_rsa.pub. Generate one with ssh-keygen -t rsa -b 4096"
+  when: ssh_result is failed   
+  tags: [ssh] 
+...

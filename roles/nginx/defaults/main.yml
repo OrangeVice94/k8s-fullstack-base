@@ -1,4 +1,9 @@
-# variables/nginx.yml
+prerequisites:
+  - curl
+  - gnupg2
+  - ca-certificates
+  - lsb-release
+  - debian-archive-keyring
 
         #**************************
         #*         Server         *
@@ -30,7 +35,7 @@ ssl_ciphers: ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECD
   
 
         #**************************
-        #*          Cache        *
+        #*   Timeouts & Limits    *
         #**************************
 
 worker_processes: auto 

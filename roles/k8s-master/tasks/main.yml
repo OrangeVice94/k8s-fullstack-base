@@ -1,0 +1,177 @@
+---
+# References:
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/
+# https://docs.tigera.io/calico/latest/getting-started/kubernetes/self-managed-onprem/onpremises
+
+# Install and configure K8s Master
+
+- name: Check if cluster is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_already_init
+  tags: [init]
+
+- name: Check if cluster is already running
+  ansible.builtin.command: kubectl cluster-info
+  register: cluster_info
+  failed_when: false
+  changed_when: false
+  tags: [init]
+
+  # If admin.conf exists but the cluster is not responding,
+  # a previous init likely failed and needs a full reset before retrying.
+- name: Reset failed kubeadm init (if cluster exists but is broken)
+  ansible.builtin.command: kubeadm reset -f
+  when:
+    - cluster_info.rc != 0
+    - kubeadm_already_init.stat.exists
+  tags: [init]
+
+
+- name: Start process kubeadm
+  block:
+
+    # The pod network CIDR must match the one defined in custom-resources.yaml
+  - name: Initialize kubeadm
+    ansible.builtin.command: >
+      kubeadm init --control-plane-endpoint={{ internal_ip }}:6443
+      --pod-network-cidr=192.168.0.0/16
+    when: cluster_info.rc != 0
+    tags: [init]
+
+  - name: Start kubelet service
+    ansible.builtin.service:
+      name: kubelet
+      state: started
+    tags: [service]
+
+  - name: Create folder Kube
+    ansible.builtin.file:
+      owner: "{{ user_ansible }}"
+      group: "{{ user_ansible }}"
+      mode: 0755
+      state: directory
+      dest: /home/{{ user_ansible }}/.kube 
+    tags: [configure]   
+
+  - name: Copy configuration to new folder
+    ansible.builtin.copy:
+      src: /etc/kubernetes/admin.conf
+      remote_src: true
+      dest: /home/{{ user_ansible }}/.kube/config
+      owner: "{{ user_ansible }}"
+      group: "{{ user_ansible }}"
+      mode: 0644
+    tags: [configure]
+
+  - name: Wait for API server to be ready
+    ansible.builtin.command: kubectl cluster-info
+    register: api_status
+    until: api_status.rc == 0
+    retries: 10
+    delay: 15
+    changed_when: false
+
+    # The operator manages these, but we apply them first to avoid
+    # race conditions and API payload size limits (using Server-Side Apply).
+  - name: Install Calico CRDs (Custom Resource Definitions)
+    ansible.builtin.command: > 
+      kubectl apply --server-side -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/operator-crds.yaml
+    tags: [cni]
+
+    # No need to wait here, as we are just preparing the operator pods.
+  - name: Install Tigera operator
+    ansible.builtin.command: >
+      kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
+    register: tigera_output
+    tags: [cni]
+
+    # Apply a short sleep to give the Kubernetes API some time to register the resources.
+  - name: Apply 10 seconds to give API time to register the PODs
+    ansible.builtin.pause:
+      seconds: 10
+    changed_when: false
+    tags: [cni]
+
+    # 'Established' is used here since it's a Custom Resource Definition (CRD).
+    # We only need to wait for the first installation block to proceed.
+  - name: Wait for Tigera CRDs to be ready
+    ansible.builtin.command: "kubectl wait --for=condition=Established crd installations.operator.tigera.io --timeout=120s"
+    tags: [cni] 
+
+  - name: Install Calico custom resources
+    ansible.builtin.command: >
+      kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/custom-resources.yaml
+    tags: [cni]
+
+    # Apply a short sleep to allow the K8s API to register the newly created pods.
+  - name: Apply 10 seconds to give API time to register the PODs
+    ansible.builtin.pause:
+      seconds: 10
+    changed_when: false
+    tags: [cni]
+
+    # We wait for the 'Ready' condition as these are actual Pods.
+    # We use a label selector within the calico-system namespace to target all Calico nodes.
+  - name: Wait for Calico to be ready
+    ansible.builtin.command: "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=calico-node -n calico-system --timeout=180s"
+    tags: [cni]
+
+  - name: Wait for CoreDNS to be ready (DNS barrier)
+    ansible.builtin.command: "kubectl wait --for=condition=Ready pod -l k8s-app=kube-dns -n kube-system --timeout=120s"
+    tags: [cni]          
+
+  - name: Verify cluster pods status
+    ansible.builtin.command:  kubectl get pods --all-namespaces 
+    register: output
+    tags: [verify]
+
+  - name: Display cluster pods status
+    ansible.builtin.debug:
+      var: output.stdout
+    tags: [verify]
+
+
+  rescue:
+    - name: Process of starting cluster has been failed!
+      ansible.builtin.debug:
+        msg: "Process of starting cluster has been failed!. Executing rollback."
+
+    - name: Reset kubeadm
+      ansible.builtin.command: kubeadm reset -f
+      failed_when: false
+
+    - name: Remove files and directories
+      ansible.builtin.file:
+        state: absent
+        path: "{{ item }}"
+      loop:
+        - /etc/kubernetes
+        - /home/{{ user_ansible }}/.kube
+        - /var/lib/kubelet
+        - /var/lib/etcd
+        - /root/.kube
+
+    - name: Uninstall Calico CRDs
+      ansible.builtin.command: kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/operator-crds.yaml
+      failed_when: false
+
+    - name: Uninstall Tigera operator
+      ansible.builtin.command: kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
+      failed_when: false
+
+    - name: Uninstall Calico custom resources
+      ansible.builtin.command: kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/custom-resources.yaml
+      failed_when: false
+
+    - name: Stop kubelet service
+      ansible.builtin.service:
+        name: kubelet
+        state: stopped
+      failed_when: false
+
+    - name: Force fail playbook
+      ansible.builtin.fail:
+        msg: "Kubernetes deployment aborted. A rollback has been performed to clean the machine."
+
+...

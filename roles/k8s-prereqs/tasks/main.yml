@@ -1,0 +1,121 @@
+---
+# K8S Prerequisites
+# Reference: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+ 
+- name: Disable Swap immediately
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  tags: [swap]
+
+- name: Disable swap permanently (survives reboot)
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '\bswap\b'
+    state: absent   
+  tags: [swap]
+
+- name: Enable IPv4 packet forwarding
+  ansible.builtin.copy:
+    content: net.ipv4.ip_forward = 1
+    dest: /etc/sysctl.d/k8s.conf
+    owner: root
+    group: root
+    mode: 0644
+  tags: [ipv4]
+
+- name: Apply sysctl params without reboot
+  ansible.builtin.command: sysctl --system 
+  changed_when: false
+  tags: [ipv4]
+
+  # Since the Docker installation generates a default
+  # config file, we cannot use 'args: creates' here
+  # to prevent running this task on every execution.
+- name: Configure containerd to use systemd cgroup
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  tags: [containerd]
+
+- name: Enable SystemdCgroup for containerd 
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  notify: restart containerd
+  tags: [containerd]
+
+- name: Install prerequisites packages for K8s
+  ansible.builtin.apt:
+    name: "{{ k8s_prereq_packages }}"
+    state: present
+    update_cache: true
+  tags: [install_prereq]
+
+- name: Create directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    owner: root
+    group: root
+    mode: 0755
+    state: directory
+
+- name: Download and dearmor K8S GPG key
+  ansible.builtin.shell: >
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key
+    | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  tags: [configuration] 
+
+- name: Add the appropriate Kubernetes apt repository
+  ansible.builtin.copy:
+    content: |
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    owner: root
+    group: root
+    mode: 0644
+  tags: [configuration]    
+
+- name: Install K8s packages     
+  ansible.builtin.apt:
+    name: "{{ k8s_packages }}"
+    state: present
+    update_cache: true
+  tags: [install_packages]   
+
+- name: Hold K8s package versions 
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+      - kubeadm
+      - kubelet
+      - kubectl
+  tags: [install_packages]  
+
+# We do not use 'state: started' here because kubelet cannot 
+# fully start until 'kubeadm init' or 'kubeadm join' is executed.
+- name: Enable kubelet service
+  ansible.builtin.service:
+    name: kubelet
+    enabled: true 
+  tags: [service]
+
+- name: Verify kubelet is enabled
+  ansible.builtin.command: systemctl is-enabled kubelet
+  register: kubelet_enabled
+  changed_when: false
+  tags: [service] 
+
+- name: Get kubelet version
+  ansible.builtin.command: kubelet --version
+  register: kubelet_version
+  tags: [service] 
+  changed_when: false
+
+- name: Display result service kubelet
+  ansible.builtin.debug:
+    msg: "{{ 'Kubelet version: ' + kubelet_version.stdout.split(' ')[1] | replace('v', '') + ' is enabled and will start after kubeadm init' if kubelet_enabled.stdout == 'enabled' else 'WARNING: kubelet is not enabled' }}"
+
+  tags: [service]
+...

@@ -1,0 +1,10 @@
+deps_packages:
+  - ca-certificates
+  - curl
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin  
