@@ -148,6 +148,40 @@ You need at least **4 VMs** running **Debian or Ubuntu** plus a control node wit
 
 These can be provisioned on **any platform**: GCP, AWS, Azure, Hetzner, VirtualBox, bare metal, etc.
 
+### Local Development with Vagrant
+
+A `Vagrantfile` is included to spin up the full environment locally using VirtualBox. This creates 5 VMs (the 4 above + an Ansible control node) on a host-only network (`192.168.56.0/24`).
+
+**Requirements:**
+- [VirtualBox](https://www.virtualbox.org/)
+- [Vagrant](https://www.vagrantup.com/)
+- 16 GB RAM minimum (the VMs use ~15 GB total)
+
+| VM | IP | RAM | vCPU |
+|-----|-----|-----|------|
+| `master1` | 192.168.56.10 | 4 GB | 4 |
+| `worker1` | 192.168.56.11 | 3 GB | 1 |
+| `worker2` | 192.168.56.12 | 3 GB | 1 |
+| `nginx1` | 192.168.56.20 | 1 GB | 1 |
+| `ansible1` | 192.168.56.30 | 1 GB | 1 |
+
+```bash
+# 1. Start all VMs
+vagrant up
+
+# 2. SSH into the Ansible control node
+vagrant ssh ansible1
+
+# 3. Run the full provisioning
+cd ~/project
+ansible-playbook -i inventory/hosts-vagrant.yml site.yml
+
+# 4. After editing files on the host, sync changes to the VM
+vagrant rsync ansible1
+```
+
+> **Note:** The Vagrantfile automatically generates an SSH key pair, creates the `ansible` user on all VMs, installs Ansible on the control node, and syncs the project via rsync. No manual setup is needed beyond `vagrant up`.
+
 
 ## Quick Start
 

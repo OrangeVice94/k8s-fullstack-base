@@ -1,0 +1,33 @@
+# Inventory for local Vagrant environment
+# Use with: ansible-playbook -i inventory/hosts-vagrant.yml site.yml
+---
+all:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
+  children:
+
+    k8s_master:
+      hosts:
+        master1:
+          ansible_host: 192.168.56.10
+          internal_ip:  192.168.56.10
+    k8s_workers:
+      hosts:
+        worker1:
+          ansible_host: 192.168.56.11
+          internal_ip:  192.168.56.11
+        worker2:
+          ansible_host: 192.168.56.12
+          internal_ip: 192.168.56.12
+
+    k8s_cluster:
+      children:
+        k8s_master:
+        k8s_workers:
+
+    proxy:
+      hosts:
+        nginx1:
+          ansible_host: 192.168.56.20
