@@ -1,6 +1,7 @@
 deps_packages:
   - ca-certificates
   - curl
+  - gnupg2
 
 docker_packages:
   - docker-ce

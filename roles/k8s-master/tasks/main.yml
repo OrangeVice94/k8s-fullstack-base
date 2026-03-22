@@ -35,6 +35,7 @@
   - name: Initialize kubeadm
     ansible.builtin.command: >
       kubeadm init --control-plane-endpoint={{ internal_ip }}:6443
+      --apiserver-advertise-address={{ internal_ip }}
       --pod-network-cidr=192.168.0.0/16
     when: cluster_info.rc != 0
     tags: [init]
@@ -115,6 +116,10 @@
     # We use a label selector within the calico-system namespace to target all Calico nodes.
   - name: Wait for Calico to be ready
     ansible.builtin.command: "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=calico-node -n calico-system --timeout=180s"
+    register: calico_wait
+    until: calico_wait.rc == 0
+    retries: 2
+    delay: 5
     tags: [cni]
 
   - name: Wait for CoreDNS to be ready (DNS barrier)

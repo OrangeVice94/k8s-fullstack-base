@@ -4,4 +4,10 @@
         name: containerd
         state: restarted
       listen: "restart containerd"
+
+    - name: Restart kubelet
+      ansible.builtin.service:
+        name: kubelet
+        state: restarted
+      listen: "restart kubelet"
 ...

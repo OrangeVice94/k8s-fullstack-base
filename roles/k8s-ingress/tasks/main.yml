@@ -15,7 +15,11 @@
 
   - name: Wait for Ingress Controller to be ready
     ansible.builtin.command: >
-      kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=ingress-nginx -n ingress-nginx --timeout=180s
+      kubectl wait --for=condition=Ready pod -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=180s
+    register: ingress_wait
+    until: ingress_wait.rc == 0
+    retries: 2
+    delay: 5
     tags: [cni]
 
   - name: Patch Service 

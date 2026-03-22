@@ -16,10 +16,27 @@
   ansible.builtin.stat:
     path: /etc/kubernetes/kubelet.conf
   register: kubelet_conf    
+  tags: [join]
+
+- name: Verify node is register in cluster
+  ansible.builtin.command: kubectl get node {{ inventory_hostname }}
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  register: node_registered
+  failed_when: false
+  changed_when: false
+  when: kubelet_conf.stat.exists
+  tags: [join]
+
+- name: Reset stale node state
+  ansible.builtin.command: kubeadm reset -f
+  when:
+    - kubelet_conf.stat.exists
+    - node_registered.rc != 0 
+  tags: [join]
 
 - name: Join cluster
   ansible.builtin.command: "{{ join_command.stdout }}"
-  when: not kubelet_conf.stat.exists
+  when: not kubelet_conf.stat.exists or node_registered.rc != 0
   tags: [join]
 
 - name: Verify node has joined

@@ -107,6 +107,15 @@
   changed_when: false
   tags: [service] 
 
+- name: Configure kubelet node IP
+  ansible.builtin.copy:
+    content: "KUBELET_EXTRA_ARGS=--node-ip={{ internal_ip | default(ansible_host) }}"
+    dest: /etc/default/kubelet
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart kubelet
+
 - name: Get kubelet version
   ansible.builtin.command: kubelet --version
   register: kubelet_version
