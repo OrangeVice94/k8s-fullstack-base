@@ -14,8 +14,12 @@ prerequisites:
 
 server_name: localhost
 
-# Temporaly: will point to K8S workers NodePort once cluster is running
-proxy_pass: https://localhost:443
+# Point to K8S workers NodePort
+proxy_pass: http://web_backend 
+
+web_backend:
+  - 192.168.56.11:30080
+  - 192.168.56.12:30080
 
 nginx_port: 443
 

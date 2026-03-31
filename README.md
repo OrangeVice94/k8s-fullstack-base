@@ -93,9 +93,11 @@ k8s-fullstack-base/
 │
 ├── ansible.cfg                        # Ansible configuration
 ├── site.yml                           # Main entry point (orchestrates all roles)
+├── Vagrantfile                        # Local development environment (5 VMs, VirtualBox)
 │
 ├── inventory/
 │   ├── hosts.yml.example              # Inventory template (committed to Git)
+│   ├── hosts-vagrant.yml              # Inventory for Vagrant environment
 │   └── hosts.yml                      # Real inventory (generated, gitignored)
 │
 ├── group_vars/
@@ -108,9 +110,8 @@ k8s-fullstack-base/
 │   ├── k8s-prereqs/                   # K8S prerequisites (swap, sysctl, kubeadm/kubelet/kubectl)
 │   ├── k8s-master/                    # Control plane init (kubeadm init, Calico CNI)
 │   ├── k8s-workers/                   # Worker nodes join (kubeadm join)
-│   └── k8s-ingress/                   # Nginx Ingress Controller (bare metal, NodePort)
-│
-├── k8s/                               # Kubernetes manifests
+│   ├── k8s-ingress/                   # Nginx Ingress Controller (bare metal, NodePort)
+│   └── app-web/                       # K8S manifests deployment (Namespace, Deployment, Service, Ingress)
 │
 ├── setup-inventory.sh                 # Inventory generator script (cloud-agnostic)
 ├── .gitignore
@@ -220,6 +221,9 @@ ansible-playbook site.yml --tags k8s-workers
 
 # Install Ingress Controller
 ansible-playbook site.yml --tags k8s-ingress
+
+# Deploy application manifests
+ansible-playbook site.yml --tags app-web
 ```
 
 ## Roles
@@ -231,8 +235,9 @@ ansible-playbook site.yml --tags k8s-ingress
 | `nginx` | `proxy` | Installs and configures Nginx as a reverse proxy to the K8S cluster |
 | `k8s-prereqs` | `k8s-cluster` | Disables swap, configures sysctl, sets up containerd with systemd cgroup, installs kubeadm/kubelet/kubectl |
 | `k8s-master` | `k8s-master` | Initializes control plane with `kubeadm init`, configures kubeconfig, installs Calico CNI |
-| `k8s-workers` | `k8s-workers` | Generates a fresh join token from the master and joins workers nodes to the cluster |
-| `k8s-ingress` | `k8s-master` | Installs Nginx Ingress Controller |
+| `k8s-workers` | `k8s-workers` | Generates a fresh join token from the master and joins worker nodes to the cluster |
+| `k8s-ingress` | `k8s-master` | Installs Nginx Ingress Controller (bare metal, NodePort 30080/30443) |
+| `app-web` | `k8s-master` | Deploys K8S manifests: Namespace, Deployment, Service, Ingress |
 
 
 ## Architecture Decisions
@@ -253,17 +258,30 @@ ansible-playbook site.yml --tags k8s-ingress
 ## Roadmap
 
 - [x] Node provisioning with Ansible (bootstrap + Docker)
-- [x] Nginx reverse proxy configuration template
+- [x] Nginx reverse proxy with upstream load balancing
 - [x] Cloud-agnostic inventory setup script
-- [x] Nginx provisioning role
-- [x] Kubernetes cluster setup (kubeadm)
-- [x] Nginx Ingress Controller
-- [ ] Sample containerized application + Dockerfile
-- [ ] Kubernetes manifests (Deployments, Services, StatefulSet, Ingress)
+- [x] Local development environment (Vagrant + VirtualBox)
+- [x] Kubernetes cluster setup (kubeadm + Calico CNI)
+- [x] Nginx Ingress Controller (bare metal, NodePort)
+- [x] Kubernetes manifests (Namespace, Deployment, Service, Ingress)
+- [ ] Sample containerized application (FastAPI) + Dockerfile
+- [ ] PostgreSQL persistence (StatefulSet)
+- [ ] Terraform IaC for cloud provisioning
 - [ ] GitHub Actions CI/CD pipeline
 - [ ] Ansible Vault for secrets management
 - [ ] Monitoring & health checks
 
+
+## Security Considerations
+
+This project is designed for learning and portfolio purposes. The following improvements would be recommended for a production environment:
+
+| Area | Current State | Production Recommendation |
+|------|--------------|--------------------------|
+| **NodePort access** | Open on all nodes (30000-32767) | Firewall rules (iptables/ufw) to restrict access to the reverse proxy IP only |
+| **SSL certificates** | Self-signed (development) | Let's Encrypt or CA-signed certificates |
+| **Secrets management** | Plaintext in inventory/vars | Ansible Vault or external secrets manager |
+| **Internal traffic** | Plain HTTP between proxy and cluster | mTLS for regulated environments (banking, government) |
 
 ## Tech Stack
 

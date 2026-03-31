@@ -2,16 +2,26 @@
 
 - name: Start process installation
   block:
-  - name: Install Bare Metal because we are not using Kubernetes Cloud Services
+
+  - name: Verify Ingress Controller is installed
+    ansible.builtin.command: kubectl get pods -n ingress-nginx --no-headers
+    failed_when: false
+    changed_when: false 
+    register: ingress_controller_pods
+    tags: [ingress]
+
+  - name: Install Bare Metal Ingress Controller because we are not using Kubernetes Cloud Services
     ansible.builtin.command: >
       kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.14.3/deploy/static/provider/baremetal/deploy.yaml
-    tags: [cni]
+    when: not ingress_controller_pods.stdout
+    tags: [ingress]
 
   - name: Apply 10 seconds to give API time to register the PODs
     ansible.builtin.pause:
       seconds: 10
     changed_when: false
-    tags: [cni]    
+    when: not ingress_controller_pods.stdout
+    tags: [ingress]    
 
   - name: Wait for Ingress Controller to be ready
     ansible.builtin.command: >
@@ -20,11 +30,11 @@
     until: ingress_wait.rc == 0
     retries: 2
     delay: 5
-    tags: [cni]
+    tags: [ingress]
 
   - name: Patch Service 
     ansible.builtin.shell: "kubectl patch svc ingress-nginx-controller -n ingress-nginx --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/ports/0/nodePort\",\"value\":30080},{\"op\":\"replace\",\"path\":\"/spec/ports/1/nodePort\",\"value\":30443}]'"
-    tags: [cni]    
+    tags: [ingress]    
 
   # In the Nginx role, a 502 is expected when the backend is not ready yet.
   # In the Ingress Controller, a 502 indicates a real connection error

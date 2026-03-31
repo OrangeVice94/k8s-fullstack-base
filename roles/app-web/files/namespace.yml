@@ -1,0 +1,9 @@
+# https://kubernetes.io/docs/tutorials/cluster-management/namespaces-walkthrough/
+# Setup Namespace Manifest
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: web
+  labels:
+    name: web

@@ -1,0 +1,34 @@
+---
+- name: Copy namespace yml to master  
+  ansible.builtin.copy:
+    src: namespace.yml
+    dest: $HOME/namespace.yml
+
+- name: Copy deployment yml to master
+  ansible.builtin.copy:
+    src: deployment.yml
+    dest: $HOME/deployment.yml
+
+- name: Copy service yml to master
+  ansible.builtin.copy:
+    src: service.yml
+    dest: $HOME/service.yml
+
+- name: Copy ingress yml to master
+  ansible.builtin.copy:
+    src: ingress.yml
+    dest: $HOME/ingress.yml
+
+- name: Create namespace
+  ansible.builtin.command: kubectl apply -f $HOME/namespace.yml
+
+- name: Apply deployment
+  ansible.builtin.command: kubectl apply -f $HOME/deployment.yml
+
+- name: Apply service
+  ansible.builtin.command: kubectl apply -f $HOME/service.yml
+
+- name: Apply ingress
+  ansible.builtin.command: kubectl apply -f $HOME/ingress.yml
+
+...

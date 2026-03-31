@@ -30,6 +30,8 @@
   - hosts: k8s_workers
     become: true
     tags: [k8s_workers]
+    environment:
+      KUBECONFIG: /etc/kubernetes/admin.conf      
     roles:
       - k8s-workers
 
@@ -40,4 +42,10 @@
       KUBECONFIG: /etc/kubernetes/admin.conf  
     roles:
       - k8s-ingress
+
+  - hosts: k8s_master
+    become: false
+    tags: [app-web]
+    roles:
+      - app-web
 ...

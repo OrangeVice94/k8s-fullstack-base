@@ -59,7 +59,7 @@ all:
       hosts:
         master1:
           ansible_host: ${MASTER_IP}
-          internal_ip:  ${INTERNAL_IP}
+          internal_ip:  ${INTERNAL_IP:-$MASTER_IP}
 
 
     k8s_workers:

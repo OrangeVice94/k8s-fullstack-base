@@ -12,16 +12,31 @@
   changed_when: false
   tags: [join]
 
+- name: Check if node is in zombie mode
+  ansible.builtin.stat:
+    path: /etc/kubernetes/bootstrap-kubelet.conf
+  register: bootstrap_kubelet_conf    
+  tags: [join]  
+
 - name: Check if node already joined
   ansible.builtin.stat:
     path: /etc/kubernetes/kubelet.conf
   register: kubelet_conf    
   tags: [join]
 
+- name: Reset stale node state
+  ansible.builtin.command: kubeadm reset -f
+  when:
+    - bootstrap_kubelet_conf.stat.exists
+    - not kubelet_conf.stat.exists
+  tags: [join]
+
 - name: Verify node is register in cluster
   ansible.builtin.command: kubectl get node {{ inventory_hostname }}
   delegate_to: "{{ groups['k8s_master'][0] }}"
   register: node_registered
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   failed_when: false
   changed_when: false
   when: kubelet_conf.stat.exists
